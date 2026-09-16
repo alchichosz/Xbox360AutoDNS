@@ -1,67 +1,68 @@
-================================================================================
-XBOX 360 DEVELOPMENT ENVIRONMENT SETUP GUIDE
-Debian Linux + Wine + XDK 21256.17
-================================================================================
+# Xbox 360 Development Environment Setup Guide
+### Debian Linux + Wine + Official XDK 21256.17
 
-This guide documents how to set up a complete Xbox 360 development environment
-on Debian Linux using Wine and the official Microsoft XDK 21256.17 (July 2012).
+This guide documents how to set up a complete, native Xbox 360 development environment on a Debian-based Linux distribution using Wine and the official Microsoft Xbox 360 XDK (July 2012).
 
-================================================================================
-PREREQUISITES
-================================================================================
+---
 
-System Requirements:
+## 📦 Prerequisites & Downloads
+
+### System Requirements
 - Debian-based Linux distribution (tested on Debian Trixie)
-- At least 10GB free disk space
-- Internet connection for downloading dependencies
+- At least 10GB of free disk space
+- \`wine\`, \`winetricks\`, and standard build tools installed
 
-Required Files (obtain from Archive.org or other sources):
-1. Visual Studio 2010 Ultimate (~2.3GB)
-   File: SW_DVD9_VS_Ultimate_2010_English_Core_MLF_X16-76630.ISO
+### Required Files (Archive.org Links)
+You must download these two files before proceeding:
 
-2. Visual Studio 2010 SP1 (~1.5GB) - Optional
-   File: mu_visual_studio_2010_sp1_x86_dvd_651704.iso
+1. **Visual Studio 2010 Ultimate** (~2.3 GB)  
+   *Required for the XDK compiler to install correctly.*  
+   - Archive Page: https://archive.org/details/en_vs_2010_ult  
+   - Direct Download: [SW_DVD9_VS_Ultimate_2010_English_Core_MLF_X16-76630.ISO](https://dn710006.ca.archive.org/0/items/en_vs_2010_ult/SW_DVD9_VS_Ultimate_2010_English_Core_MLF_X16-76630.ISO)
 
-3. Xbox 360 XDK 21256.17 (~1.4GB)
-   File: XDKSetupXenon21256.17.exe
+2. **Xbox 360 XDK 21256.17** (~1.4 GB)  
+   *The last official SDK before Xbox 360 discontinuation.*  
+   - Archive Page: https://archive.org/details/xdkcollection  
+   - Direct Download: [XDKSetupXenon21256.17.exe](https://dn721906.ca.archive.org/0/items/xdkcollection/2013/21256.17/XDKSetupXenon21256.17.exe)
 
-================================================================================
-STEP 1: INSTALL WINE AND DEPENDENCIES
-================================================================================
+---
 
-# Update system
-sudo apt update
-sudo apt upgrade -y
+## 🛠️ Step 1: Install Wine and Dependencies
 
-# Install Wine and Winetricks
+Open your terminal and run the following commands to prepare a clean, 32-bit Wine environment:
+
+\`\`\`bash
+# Update system and install Wine/Winetricks
+sudo apt update && sudo apt upgrade -y
 sudo apt install -y wine winetricks
 
-# Configure Wine for 32-bit (XDK requires 32-bit)
+# Configure a dedicated 32-bit Wine prefix for the XDK
 export WINEPREFIX="$HOME/.wine-xbox360-xdk"
 export WINEARCH=win32
 
-# Initialize Wine prefix and set Windows version to Windows 7
+# Initialize the prefix and open the configuration window
 winecfg
+\`\`\`
 
-In the Wine configuration window:
-- Go to Applications tab
-- Set Windows Version to Windows 7
-- Click Apply then OK
+*In the Wine Configuration window:*
+1. Go to the **Applications** tab.
+2. Change **Windows Version** to **Windows 7**.
+3. Click **Apply**, then **OK**.
 
-================================================================================
-STEP 2: INSTALL VISUAL C++ RUNTIME LIBRARIES
-================================================================================
-
-# Install required Visual C++ runtimes
+Next, install the required Visual C++ runtime libraries:
+\`\`\`bash
 WINEPREFIX="$HOME/.wine-xbox360-xdk" winetricks -q vcrun2005 vcrun2008 vcrun2010 corefonts
+\`\`\`
+*(Accept all license agreements if prompted).*
 
-Accept all license agreements when prompted.
+---
 
-================================================================================
-STEP 3: INSTALL VISUAL STUDIO 2010
-================================================================================
+## 💻 Step 2: Install Visual Studio 2010
 
-# Mount the ISO
+The XDK installer requires Visual Studio to be present to install the compiler tools.
+
+\`\`\`bash
+# Create a mount point and mount the VS2010 ISO
 sudo mkdir -p /mnt/vs2010
 sudo mount -o loop ~/Downloads/SW_DVD9_VS_Ultimate_2010_English_Core_MLF_X16-76630.ISO /mnt/vs2010
 
@@ -69,138 +70,95 @@ sudo mount -o loop ~/Downloads/SW_DVD9_VS_Ultimate_2010_English_Core_MLF_X16-766
 export WINEPREFIX="$HOME/.wine-xbox360-xdk"
 export WINEARCH=win32
 wine /mnt/vs2010/setup.exe
+\`\`\`
 
-INSTALLATION OPTIONS:
-1. Click "Install Microsoft Visual Studio 2010"
-2. Accept license terms
-3. Choose CUSTOM installation (NOT Full)
-4. SELECT ONLY:
-   [X] Microsoft Visual C++ 2010
-   [X] Microsoft .NET Framework 4
-5. UNCHECK (to save time and avoid Wine issues):
-   [ ] SQL Server
-   [ ] Silverlight
-   [ ] F#
-   [ ] Crystal Reports
-   [ ] Help Viewer
-6. Click Install and wait (15-30 minutes)
-7. If asked to reboot, click "No" or "Later"
+*During Installation:*
+1. Click **Install Microsoft Visual Studio 2010**.
+2. Accept the license terms.
+3. Choose **Custom** installation (Do NOT choose Full).
+4. **Select ONLY:**
+   - ✅ Microsoft Visual C++ 2010
+   - ✅ Microsoft .NET Framework 4
+5. **Uncheck everything else** (SQL Server, Silverlight, F#, Help Viewer) to save time and avoid Wine compatibility issues.
+6. Click **Install** and wait (this may take 15–30 minutes).
+7. If prompted to reboot at the end, click **No** or **Later**.
 
-# Verify installation
-find "$WINEPREFIX/drive_c" -name "cl.exe" 2>/dev/null
+*Verify the compiler installed:*
+\`\`\`bash
+find "$WINEPREFIX/drive_c" -name "cl.exe" 2>/dev/null | head -1
+\`\`\`
 
-Expected output should show paths like:
-/home/user/.wine-xbox360-xdk/drive_c/Program Files/Microsoft Visual Studio 10.0/VC/bin/cl.exe
+---
 
-================================================================================
-STEP 4: INSTALL XBOX 360 XDK 21256.17
-================================================================================
+## 🎮 Step 3: Install Xbox 360 XDK 21256.17
 
-# Run the XDK installer
+Now that VS2010 is detected, the XDK will install the full toolchain.
+
+\`\`\`bash
 cd ~/Downloads
 wine XDKSetupXenon21256.17.exe
+\`\`\`
 
-INSTALLATION OPTIONS:
-1. When prompted, choose FULL INSTALLATION (NOT Minimum)
-2. Keep default path: C:\Program Files\Microsoft Xbox 360 SDK
-3. Click Next and wait for installation to complete
-4. Ignore cosmetic Wine errors (display settings, icon extraction failures)
+*During Installation:*
+1. When prompted with Installation Options, choose **Full Installation** (Do NOT choose Minimum).
+2. Keep the default path: \`C:\Program Files\Microsoft Xbox 360 SDK\`.
+3. Click **Next** and wait for completion.
+4. *Note:* Ignore cosmetic Wine errors in the terminal (e.g., \`NtUserChangeDisplaySettings\` or \`InvokeShellLinker\`). They do not affect the installation.
 
-# Verify installation
+*Verify critical XDK files:*
+\`\`\`bash
 find "$WINEPREFIX/drive_c/Program Files/Microsoft Xbox 360 SDK" -name "xtl.h" 2>/dev/null
-find "$WINEPREFIX/drive_c/Program Files/Microsoft Xbox 360 SDK" -name "xboxkrnl.lib" 2>/dev/null
+find "$WINEPREFIX/drive_c/Program Files/Microsoft Xbox 360 SDK" -name "xapilib.lib" 2>/dev/null
 find "$WINEPREFIX/drive_c/Program Files/Microsoft Xbox 360 SDK" -name "imagexex.exe" 2>/dev/null
+\`\`\`
 
-Expected output:
-/home/user/.wine-xbox360-xdk/drive_c/Program Files/Microsoft Xbox 360 SDK/include/xbox/xtl.h
-/home/user/.wine-xbox360-xdk/drive_c/Program Files/Microsoft Xbox 360 SDK/lib/xbox/xboxkrnl.lib
-/home/user/.wine-xbox360-xdk/drive_c/Program Files/Microsoft Xbox 360 SDK/bin/win32/imagexex.exe
+---
 
-================================================================================
-STEP 5: BUILD YOUR PROJECT
-================================================================================
+## 🚀 Step 4: Build Your Project
 
-Navigate to your project directory:
-cd ~/Xbox360AutoDNS
+This repository includes a dynamic \`build.sh\` script that handles the entire compilation pipeline.
 
-Run the build script:
-chmod +x build.sh
-./build.sh
+1. Open \`build.sh\` in a text editor.
+2. Modify the top two variables to match your target file and desired version:
+   \`\`\`bash
+   VERSION="v1.0.3-beta"
+   SOURCE_FILE="AutoDNS-beta.cpp"
+   \`\`\`
+3. Save the file and make it executable (if not already):
+   \`\`\`bash
+   chmod +x build.sh
+   \`\`\`
+4. Run the build:
+   \`\`\`bash
+   ./build.sh
+   \`\`\`
 
-Expected output:
-🛠️ Compiling with XDK 21256 via Wine...
-   -> Compiling...
-   -> Linking...
-   -> Generating .xex...
-✅ SUCCESS! Plugin generated:
--rw-r--r-- 1 user user 20K Sep 16 09:40 build/AutoDNS-beta.xex
+The script will automatically create a versioned folder (e.g., \`build-v1.0.3-beta/\`) and output the final \`AutoDNS-v1.0.3-beta.xex\` file there.
 
-================================================================================
-TROUBLESHOOTING
-================================================================================
+---
 
-ERROR: LINK : fatal error LNK1181: cannot open input file 'xam.lib'
-SOLUTION: Remove xam.lib from the linker command. Use only xboxkrnl.lib 
-          and xapilib.lib (the XDK 21256 doesn't include xam.lib).
+## 🔧 Troubleshooting
 
-ERROR: IMAGEXEX : error IM1067: invalid load address for module type
-SOLUTION: Add -XEX:NO -ALIGN:128,4096 flags to the link.exe command.
+- **\`LINK : fatal error LNK1181: cannot open input file 'xam.lib'\`**  
+  *Solution:* The XDK 21256.17 does not include \`xam.lib\`. Ensure your \`build.sh\` links against \`xboxkrnl.lib\` and \`xapilib.lib\` only.
 
-ERROR: Setup has detected that this computer does not meet the requirements
-SOLUTION: You're trying to install VS2010 SP1 without VS2010 base installed.
-          Install the full VS2010 Ultimate ISO first.
+- **\`IMAGEXEX : error IM1067: invalid load address for module type\`**  
+  *Solution:* Ensure the \`-XEX:NO -ALIGN:128,4096\` flags are present in the \`link.exe\` command within \`build.sh\`.
 
-ERROR: Terminal spam with err:ole:CoReleaseMarshalData
-SOLUTION: This is harmless Wine cleanup noise. Add 2>/dev/null to wine 
-          commands or run wineserver -k after build.
+- **Terminal spam: \`err:ole:CoReleaseMarshalData StdMarshal ReleaseMarshalData failed\`**  
+  *Solution:* This is harmless Wine cleanup noise. The provided \`build.sh\` already suppresses this using \`2>/dev/null\` and cleans up the background process with \`wineserver -k\`.
 
-ERROR: XDK installs only "Minimum" and skips compiler
-SOLUTION: XDK requires Visual Studio 2010 to be detected. Install VS2010 
-          first, then reinstall XDK and choose "Full Installation".
+- **XDK installs only "Minimum" and skips the compiler**  
+  *Solution:* The XDK installer failed to detect Visual Studio. Ensure Step 2 was completed successfully, then rerun the XDK installer and select "Full Installation".
 
-================================================================================
-IMPORTANT NOTES
-================================================================================
+---
 
-1. The XDK 21256.17 is the last official SDK before Xbox 360 discontinuation.
+## 📤 Deployment
 
-2. Wine errors are cosmetic and don't affect the final .xex output.
+- **Via FTP/XBDM:** Upload the \`.xex\` file to your Xbox 360 (default credentials: \`xbox\` / \`xbox\`, port \`21\` or \`730\`). Place it in \`H1:/Plugins/\` (for DashLaunch) or \`E:\UDATA\...\default.xex\` (for standalone).
+- **Via USB:** Copy the \`.xex\` to a FAT32-formatted USB drive and launch it via Aurora, FreeStyle Dash, or XeXMenu.
+- **Via Xenia Emulator:** Drag and drop the \`.xex\` file directly into the Xenia window on your PC.
 
-3. Always test plugins on a modded Xbox 360 (RGH/JTAG) - retail consoles 
-   won't run unsigned code.
-
-4. Keep the original AutoDNS.cpp as fallback if Beta causes crashes.
-
-5. The WINEPREFIX is set to ~/.wine-xbox360-xdk to keep it isolated from 
-   other Wine applications.
-
-================================================================================
-DEPLOYMENT OPTIONS
-================================================================================
-
-VIA FTP/XBDM:
-- Connect to Xbox 360 (default credentials: xbox/xbox, port 21 or 730)
-- Upload build/AutoDNS-beta.xex to:
-  * E:\UDATA\AutoDNS-beta\default.xex (standalone app)
-  * F:\Plugins\AutoDNS-beta.xex (DashLaunch plugin)
-
-VIA USB:
-1. Copy build/AutoDNS-beta.xex to FAT32 USB drive
-2. Launch via Aurora, FreeStyle Dash, or XeXMenu on Xbox 360
-
-VIA XENIA EMULATOR:
-1. Download Xenia from https://xenia.jp/
-2. Drag build/AutoDNS-beta.xex into Xenia window
-
-================================================================================
-CREDITS
-================================================================================
-
-- Microsoft Xbox 360 XDK 21256.17 (July 2012)
-- Wine Project (winehq.org)
-- AutoDNS Project Contributors
-
-================================================================================
-Last updated: September 2026
-Tested on: Debian Trixie, Wine 9.x
-================================================================================
+---
+*Last updated: September 2026*  
+*Tested on: Debian Trixie, Wine 9.x*
