@@ -1,1 +1,12 @@
 build/
+
+# XDK / Visual Studio Build Artifacts
+build/
+*.obj
+*.exe
+*.xex
+*.pdb
+*.ilk
+*.idb
+*.user
+*.suo
