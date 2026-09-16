@@ -1,7 +1,5 @@
-build/
-
-# XDK / Visual Studio Build Artifacts
-build/
+# XDK / Visual Studio Build Artifacts (all versions)
+build-*/
 *.obj
 *.exe
 *.xex
