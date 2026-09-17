@@ -1,61 +1,58 @@
-# AutoDNS for Xbox 360
+# AutoDNS XEX Plugin (v1.0.3)
 
-AutoDNS is a custom DNS server plugin designed for the Xbox 360 (specifically for RGH/JTAG modified consoles). It intercepts and manages DNS requests to control network behavior, block telemetry, or redirect traffic.
+A DashLaunch sysdll plugin that replaces the intentionally dead DNS (`192.0.2.1`) stored in NAND with working DNS servers at runtime. Enables internet access for games and apps while keeping the console offline at the hardware level for blind boot safety.
 
-## Versions
+## Key Features
 
-- **\`AutoDNS.cpp\`**: The stable, original version (v1.0.2).
-- **\`AutoDNS-beta.cpp\`**: The experimental Beta version. Features advanced **Stealth** (packet obfuscation/evasion) and **Server Delay** (controlled response timing to prevent timeouts and rate-limiting).
+-   **Dual Context Injection:** Applies DNS to both `SYSAPP` (Dashboard) and `TITLE` (Games/Apps) contexts independently.
+-   **NAND-Safe:** Never modifies flash storage. Next boot starts offline automatically.
+-   **Resilient Application:** Includes retry logic and stack readiness verification after each configuration change.
+-   **Dead DNS Detection:** Only activates if the dead DNS is actually present; skips injection if already valid.
+-   **Stealth Compatible:** Works alongside local stealth services (Proton, xbGuard) without bypassing their network hooks.
+-   **Customizable Build:** DNS servers can be set at compile time via CLI arguments.
 
-## Project Structure
+## Installation & Setup
 
-\`\`\`
-.
-├── AutoDNS.cpp          # Stable version source code
-├── AutoDNS-beta.cpp     # Beta version source code (Stealth + Delay)
-├── AutoDNS.xex.xml      # XEX module configuration
-├── build.sh             # Automated build script (Wine + XDK 21256)
-├── Dev-Guide.txt        # Step-by-step environment setup guide
-└── build/               # Compiled artifacts (gitignored)
-    └── AutoDNS-beta.xex # Final executable
-\`\`\`
+1.  Set your Xbox 360 Network Settings to **Manual DNS** with both servers as `192.0.2.1`.
+2.  Copy `AutoDNS.xex` to your USB drive or HDD.
+3.  Add it to your `launch.ini` under `[Plugins]`.
 
-## How to Build
+### ⚠️ Critical: Plugin Load Order
 
-This project is compiled natively on Linux using the official **Microsoft Xbox 360 XDK (21256.17)** running through **Wine**.
+The load order in `launch.ini` is mandatory for proper operation with stealth plugins:
 
-### Prerequisites
+```ini
+[Plugins]
+plugin1 = Usb:\Freestealth\Proto.xex    # Stealth MUST load first
+plugin2 = Usb:\AutoDNS.xex              # AutoDNS loads second
+```
 
-You must have the XDK 21256.17 and Visual Studio 2010 installed in a dedicated 32-bit Wine prefix.
+> **Why?** Stealth plugins need to arm their network hooks before AutoDNS finalizes the network configuration. Reversing this order may result in unfiltered traffic or connection failures.
 
-### Compilation Steps
+## Building from Source
 
-1. Ensure you have the \`WINEPREFIX\` configured for the Xbox 360 XDK.
-2. Run the build script:
-   \`\`\`bash
-   chmod +x build.sh
-   ./build.sh
-   \`\`\`
-3. The final plugin will be generated at \`build/AutoDNS-beta.xex\`.
+Requires Microsoft Xbox 360 SDK (XDK 21256) and Wine.
 
-## Environment Setup
+```bash
+# Default build (Cloudflare DNS)
+./build.sh
 
-Setting up the Xbox 360 XDK on Linux can be tricky. For a complete, step-by-step guide on how to install Wine, Visual Studio 2010, and the XDK 21256.17 on Debian, please read the **\`Dev-Guide.txt\`** file included in this repository.
+# Custom DNS servers
+./build.sh 8.8.8.8 8.8.4.4
 
-## Deployment
+# Custom TITLE_DELAY (milliseconds)
+TITLE_DELAY=0 ./build.sh
+```
 
-1. **Via FTP/XBDM:** Upload \`build/AutoDNS-beta.xex\` to your Xbox 360.
-   - For DashLaunch plugins: \`H1:/Plugins/\` or \`F:\\Plugins\\\`
-   - For standalone apps: \`E:\\UDATA\\AutoDNS\\default.xex\`
-2. **Via USB:** Copy the \`.xex\` to a FAT32 drive and launch via Aurora, FreeStyle Dash, or XeXMenu.
+Output will be placed in `build-beta6/AutoDNS-beta6.xex`. Rename to `AutoDNS.xex` before deploying.
 
-## Troubleshooting
+## Technical Notes
 
-- **LNK1181 (cannot open xam.lib):** The XDK 21256 doesn't include \`xam.lib\`. The \`build.sh\` is already configured to link only \`xboxkrnl.lib\` and \`xapilib.lib\`.
-- **IMAGEXEX IM1067 (invalid load address):** Ensure the \`-XEX:NO -ALIGN:128,4096\` flags are present in the \`link.exe\` command inside \`build.sh\`.
+-   Uses `XnpConfig` for runtime-only DNS replacement. No NAND writes.
+-   Separate `CFG` structs per context prevent race conditions during async write-back.
+-   `ApplyDNS()` retries up to 3 times with 5s intervals and verifies stack readiness via `XNetGetTitleXnAddr`.
+-   Compiled with `-D NDEBUG`; no debug logging included in release binary.
 
-## Credits
+## License
 
-- Original AutoDNS Project
-- Microsoft Xbox 360 XDK 21256.17
-- Wine Project
+Licensed under the MIT License.

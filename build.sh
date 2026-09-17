@@ -6,7 +6,7 @@
 set -e
 
 # Build configuration
-VERSION="beta1"
+VERSION="beta6"
 SOURCE_FILE="AutoDNS-beta.cpp" 
 BUILD_DIR="build-${VERSION}"
 OUTPUT_NAME="AutoDNS-${VERSION}"
