@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Builds AutoDNS-beta.xex with the Xbox 360 XDK via Wine.
 #
-# Usage: ./build.sh [DNS1] [DNS2]
-# Example: ./build.sh 8.8.8.8 8.8.4.4
+# Usage: ./build.sh [DNS1] [DNS2] [ENABLE_LOGS]
+# Example: ./build.sh 8.8.8.8 8.8.4.4 1
 set -e
 
 # Build configuration
-VERSION="beta6"
-SOURCE_FILE="AutoDNS-beta.cpp" 
+VERSION="v1.0.4" # Atualizado para beta7
+SOURCE_FILE="AutoDNS-v1.0.4.cpp" 
 BUILD_DIR="build-${VERSION}"
 OUTPUT_NAME="AutoDNS-${VERSION}"
 
@@ -38,8 +38,19 @@ DNS2="${2:-1.0.0.1}"
 HEX1=$(hex_ip "$DNS1")
 HEX2=$(hex_ip "$DNS2")
 
+# --- CORREÇÃO: Lógica de logging movida para ANTES da compilação ---
+LOG_ENABLED="${3:-0}"
+DFLAGS=""
+if [ "$LOG_ENABLED" = "1" ]; then
+    DFLAGS="-D AUTOLOG"
+    echo "  -> Logging: ENABLED"
+else
+    echo "  -> Logging: DISABLED (Release mode)"
+fi
+# ---------------------------------------------------------------------
+
 echo "============================================================"
-echo "Building: AutoDNS-beta.cpp"
+echo "Building: $SOURCE_FILE"
 echo "DNS 1: $DNS1 ($HEX1)"
 echo "DNS 2: $DNS2 ($HEX2)"
 echo "Output:  $BUILD_DIR/${OUTPUT_NAME}.xex"
@@ -50,7 +61,7 @@ mkdir -p "$BUILD_DIR"
 # 1. Compile
 echo "   -> [1/3] Compiling..."
 wine "$BIN\\cl.exe" -nologo -c -W4 -Ox -MT -GR- -EHsc -TP \
-    -D _XBOX -D NDEBUG -D "GOOD_DNS1=$HEX1" -D "GOOD_DNS2=$HEX2" \
+    -D _XBOX -D NDEBUG $DFLAGS -D "GOOD_DNS1=$HEX1" -D "GOOD_DNS2=$HEX2" \
     -I"$INC" \
     -Fo"$BUILD_DIR\\${OUTPUT_NAME}.obj" "$SOURCE_FILE" 2>/dev/null
 

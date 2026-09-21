@@ -1,14 +1,27 @@
-// AutoDNS v1.0.4 (User Thread Notify Test)
+// ============================================================================
+// AutoDNS v1.0.4 (Final Release)
+// ============================================================================
+// A DashLaunch sysdll plugin for Xbox 360 (Kernel 17559 / Corona and others).
 //
-// CRITICAL HYPOTHESIS TEST:
-// Testing if XNotifyQueueUI works when called from a USER thread (CreateThread)
-// instead of a SYSTEM thread (ExCreateThread with flag 0x2).
+// FEATURES & BEHAVIOR:
+// 1. Native Toast Notifications: Bypasses XAM system-thread restrictions by 
+//    spawning a dedicated USER thread via CreateThread().
+// 2. Stealth UI Timing: Delays the boot notification to prevent race conditions
+//    with pre-login stealth hooks (xbGuard).
+// 3. Passive Watchdog: Detects and recovers from runtime DNS reversion.
+// 4. Safe NAND Handling: Checks live stack flags (XADDR_DNS) before reading 
+//    the NAND config, preventing false positives.
 //
-// All DNS and Watchdog logic remains untouched and proven stable.
+// SETUP: Network Settings -> DNS Manual -> 192.0.2.1 for both servers.
+// ============================================================================
 
 #include <xtl.h>
 #include <stddef.h>
 #include <string.h>
+
+// --- Debug/Test Flags ------------------------------------------------------
+// TEST MODE: Uncomment to force "Restored" notify 15s after boot.
+// #define TEST_RESTORE_NOTIFY 
 
 // --- Conditional Logging ---------------------------------------------------
 #ifdef AUTOLOG
@@ -18,29 +31,30 @@
 #endif
 
 // --- DNS configuration ---------------------------------------------------
-#define DEAD_DNS           0xC0000201u
+#define DEAD_DNS           0xC0000201u  // 192.0.2.1 (RFC 5737, never routed)
 #ifndef GOOD_DNS1
-#define GOOD_DNS1          0x01010101u
+#define GOOD_DNS1          0x01010101u  // 1.1.1.1 (Cloudflare default)
 #endif
 #ifndef GOOD_DNS2
-#define GOOD_DNS2          0x01000001u
+#define GOOD_DNS2          0x01000001u  // 1.0.0.1 (Cloudflare default)
 #endif
 
-// --- Boot timing ---------------------------------------------------------
-#define BOOT_WAIT          90000
-#define SWAP_WAIT          30000
-#define TITLE_DELAY        10000
-#define APPLY_RETRIES      3
-#define APPLY_RETRY_WAIT   5000
+// --- Boot & UI Timing ------------------------------------------------------
+#define BOOT_WAIT          75000        // ms: wait for DHCP/Wi-Fi at boot
+#define SWAP_WAIT          30000        // ms: wait for stack after XnpConfig
+#define TITLE_DELAY        8000         // ms: safety margin before TITLE context
+#define BOOT_NOTIFY_DELAY  15000         // ms: DELAY UI TOAST to let xbGuard finish its hooks!
+#define APPLY_RETRIES      3            
+#define APPLY_RETRY_WAIT   5000         
 
 // --- Watchdog timing -----------------------------------------------------
-#define WATCHDOG_SNOOZE    60000
-#define WATCHDOG_INTERVAL  15000
-#define WATCHDOG_TIMEOUT   180000
+#define WATCHDOG_SNOOZE    60000        
+#define WATCHDOG_INTERVAL  15000        
+#define WATCHDOG_TIMEOUT   180000       
 
 // --- Network caller contexts ---------------------------------------------
-#define SYSAPP 2
-#define TITLE  1
+#define SYSAPP 2                        
+#define TITLE  1                        
 
 // --- XNetGetTitleXnAddr status flags -------------------------------------
 #define XADDR_NONE         0x01
@@ -91,7 +105,6 @@ static DWORD (*pXNetGetTitleXnAddr)(int, XNADDR_ *);
 static int   (*pXnpConfig)(int, CFG *, DWORD);
 static int   (*pXnpLoadConfigParams)(int, CFG *, DWORD, DWORD);
 
-// Corrected Signature based on xkelib / Reversing (ULONGLONG for qwAreas)
 typedef VOID (*XNOTIFYQUEUEUI)(
     DWORD type,
     DWORD userIndex,
@@ -100,7 +113,6 @@ typedef VOID (*XNOTIFYQUEUEUI)(
     PVOID pContextData
 );
 
-// 0x290 = 656 = XNotifyQueueUI
 static XNOTIFYQUEUEUI pXNotifyQueueUI = NULL;
 
 // --- Per-context CFG structs ---------------------------------------------
@@ -130,90 +142,73 @@ static BOOL Resolve()
             return FALSE;
     }
 
-    // Ordinal 656 (0x290)
     XexGetProcedureAddress(xam, 0x290, (PVOID *)&pXNotifyQueueUI);
-
     return TRUE;
 }
 
 // -------------------------------------------------------------------------
-// ALTERAÇÃO 2: USER Thread Proc com Sleep(250) para estabelecer contexto
-// -------------------------------------------------------------------------
 static DWORD WINAPI NotifyThreadProc(LPVOID lpParam)
 {
     if (!pXNotifyQueueUI) {
-        LOG("Notify: pXNotifyQueueUI is NULL.\n");
         delete[] (wchar_t*)lpParam;
         return 0;
     }
 
     LPCWSTR msg = (LPCWSTR)lpParam;
-    LOG("Notify: USER thread started.\n");
+    Sleep(250); // Let USER thread context stabilize
 
-    // Give the newly-created USER thread a moment to fully enter
-    // the dashboard/user execution context.
-    Sleep(250);
-
-    LOG("Notify: calling XNotifyQueueUI...\n");
-
-    // Exact baseline test parameters
     pXNotifyQueueUI(
-        0,                  // type
+        3,                  // XNOTIFYUI_TYPE_GENERIC
         0xFF,               // XUSER_INDEX_ANY
-        0x00000001ULL,      // XNOTIFY_SYSTEM (ULONGLONG is critical)
+        0x00000001ULL,      // XNOTIFY_SYSTEM (ULONGLONG for PPC ABI)
         msg,
         NULL
     );
 
-    LOG("Notify: XNotifyQueueUI returned.\n");
-    
     delete[] (wchar_t*)lpParam;
     return 0;
 }
 
 // -------------------------------------------------------------------------
-// ALTERAÇÃO 1: Usar CreateThread em vez de ExCreateThread(..., 2)
-// -------------------------------------------------------------------------
 static void ShowNotification(const char* msg)
 {
-    if (!pXNotifyQueueUI)
-        return;
+    if (!pXNotifyQueueUI) return;
 
     wchar_t* threadMsg = new wchar_t[128];
-    if (!threadMsg)
-        return;
+    if (!threadMsg) return;
 
     int i = 0;
     for (; i < 127 && msg[i] != '\0'; i++)
         threadMsg[i] = (wchar_t)msg[i];
     threadMsg[i] = L'\0';
 
-    HANDLE hNotify = NULL;
-
-    // IMPORTANT: CreateThread() -> USER thread
-    // ExCreateThread(..., 0x2) -> SYSTEM thread (which XAM rejects for UI)
-    hNotify = CreateThread(
-        NULL,
-        0,
-        NotifyThreadProc,
-        (LPVOID)threadMsg,
-        CREATE_SUSPENDED,
-        NULL
+    HANDLE hNotify = CreateThread(
+        NULL, 0, NotifyThreadProc, (LPVOID)threadMsg, CREATE_SUSPENDED, NULL
     );
 
-    if (!hNotify) {
-        LOG("Notify: CreateThread failed.\n");
+    if (hNotify) {
+        ResumeThread(hNotify);
+        CloseHandle(hNotify);
+    } else {
         delete[] threadMsg;
-        return;
     }
-
-    LOG("Notify: USER thread created.\n");
-    ResumeThread(hNotify);
-    CloseHandle(hNotify);
 }
 
 // -------------------------------------------------------------------------
-// (Restante do código DNS/Watchdog inalterado e estável)
+// TEST THREAD: Forces the "Restored" notify to appear for testing purposes.
+// -------------------------------------------------------------------------
+#ifdef TEST_RESTORE_NOTIFY
+static DWORD WINAPI TestRestoreThread(LPVOID)
+{
+    LOG("Test: Waiting 15s to force 'Restored' notify...\n");
+    Sleep(15000);
+    ShowNotification("AutoDNS: Restored (TEST)");
+    return 0;
+}
+#endif
+
+// -------------------------------------------------------------------------
+// (Proven, stable DNS and Watchdog logic below)
 // -------------------------------------------------------------------------
 static BOOL WaitForAddress(DWORD ms, int caller)
 {
@@ -228,10 +223,8 @@ static BOOL WaitForAddress(DWORD ms, int caller)
         BOOL hasNet = (flags & (XADDR_STATIC | XADDR_DHCP)) != 0;
         BOOL none   = (flags & XADDR_NONE) != 0;
 
-        if (hasNet && hasDns && hasIp && !none)
-            return TRUE;
-        if (GetTickCount() - t0 > ms)
-            return FALSE;
+        if (hasNet && hasDns && hasIp && !none) return TRUE;
+        if (GetTickCount() - t0 > ms) return FALSE;
         Sleep(500);
     }
 }
@@ -251,8 +244,7 @@ static BOOL StartContext(int caller)
 static BOOL ApplyDNS(int caller, CFG *cfg)
 {
     for (int attempt = 1; attempt <= APPLY_RETRIES; attempt++) {
-        if (pXnpConfig(caller, cfg, 0) == 0 &&
-            WaitForAddress(SWAP_WAIT, caller))
+        if (pXnpConfig(caller, cfg, 0) == 0 && WaitForAddress(SWAP_WAIT, caller))
             return TRUE;
         Sleep(APPLY_RETRY_WAIT);
     }
@@ -267,7 +259,7 @@ static void WatchdogReapply()
     memcpy(&title_copy, &g_cfg_title, sizeof(CFG));
 
     LOG("Watchdog: Reapplying DNS...\n");
-    ShowNotification("AutoDNS: Watchdog DNS Restored");
+    ShowNotification("AutoDNS: Restored");
 
     ApplyDNS(SYSAPP, &sys_copy);
     ApplyDNS(TITLE,  &title_copy);
@@ -299,15 +291,11 @@ static DWORD WINAPI WatchdogWorker(LPVOID)
         BOOL hasNet = (flags & (XADDR_STATIC | XADDR_DHCP)) != 0;
         BOOL none   = (flags & XADDR_NONE) != 0;
 
-        if (hasNet && hasDns && hasIp && !none)
-            continue;
-        if (!hasNet || none)
-            continue;
-        if (!Load(&g_cfg_watchdog))
-            continue;
+        if (hasNet && hasDns && hasIp && !none) continue;
+        if (!hasNet || none) continue;
+        if (!Load(&g_cfg_watchdog)) continue;
 
-        if (g_cfg_watchdog.dns[0] == DEAD_DNS ||
-            g_cfg_watchdog.dns[1] == DEAD_DNS)
+        if (g_cfg_watchdog.dns[0] == DEAD_DNS || g_cfg_watchdog.dns[1] == DEAD_DNS)
             WatchdogReapply();
     }
     return 0;
@@ -361,8 +349,18 @@ static void Run()
 
     LOG("AutoDNS: Boot complete.\n");
 
-    // Trigger the User Thread Notify Test
-    ShowNotification("AutoDNS: Active - User Thread Test");
+    // CRITICAL FIX FOR XBGUARD: 
+    // Wait 9 seconds AFTER DNS is applied to let xbGuard finish its UI hooks 
+    // and avoid XAM queue collisions with its "online" notification.
+    Sleep(BOOT_NOTIFY_DELAY);
+
+    ShowNotification("AutoDNS: Active");
+
+#ifdef TEST_RESTORE_NOTIFY
+    // Spawn test thread to verify the "Restored" notify works
+    HANDLE hTest = CreateThread(NULL, 0, TestRestoreThread, NULL, 0, NULL);
+    if (hTest) CloseHandle(hTest);
+#endif
 
     g_boot_complete = TRUE;
 }
@@ -386,7 +384,6 @@ extern "C" BOOL WINAPI DllMain(HANDLE, DWORD reason, LPVOID)
     if (reason != DLL_PROCESS_ATTACH)
         return TRUE;
 
-    // Worker and Watchdog remain SYSTEM threads (flag 2), which is correct for them.
     HANDLE h1 = NULL;
     if (ExCreateThread(&h1, 0, NULL, NULL, Worker, NULL, 2) >= 0 && h1 != NULL)
         CloseHandle(h1);

@@ -1,10 +1,11 @@
-# XDK / Visual Studio Build Artifacts (all versions)
+# Build directories
 build-*/
-*.obj
-*.exe
+build/
+
+# Compiled binaries
 *.xex
-*.pdb
-*.ilk
-*.idb
-*.user
-*.suo
+*.xex.bak
+
+# Temporary files
+*.tmp
+*.log
